@@ -1,6 +1,9 @@
 import numpy as np
 import pandas as pd
 import os
+import cairocffi as cairo
+import cv2
+import matplotlib.font_manager as fm
 """
 # All about MNIST Style DataSet
 
@@ -17,9 +20,173 @@ for dirname in os.getcwd().split('/'):
     dirnames.append(dirname)
     if dirname == 'CRNN-text-recognition':
         break
-DATASET_DIR = "/".join(dirnames+['datasets'])
-
+DATASET_DIR = "/".join(dirnames + ['datasets'])
 DOWNLOAD_URL_FORMAT = "https://s3.ap-northeast-2.amazonaws.com/pai-datasets/all-about-mnist/{}/{}.csv"
+
+
+FONT_LIST = [f.name for f in fm.fontManager.ttflist]
+FONT_LIST = list(set([f for f in FONT_LIST if "Nanum" in f]))
+
+MAX_WORD = 8  # 최대 철자 수
+FONT_SIZE = 30  # 폰트 크기
+MAX_HEIGHT = FONT_SIZE + 8  # 이미지의 최대 Height
+MAX_WIDTH = FONT_SIZE * MAX_WORD + 8  # 이미지 최대 Width
+
+
+class OCRDataset:
+    """
+    generate OCR dataset for Text Recognition
+
+    텍스트 Recognition에 필요한 단어집합을 만ㄷ르어주는 것
+
+    :param words : OCR 단어로 생성할 단어 집합들
+    :param bg_noise : 가우시안 노이즈의 강도 (0.0~0.5)
+    :param angle_noise : 회전 각 노이즈의 강도
+    """
+
+    def __init__(self,
+                 words,
+                 font_size,
+                 bg_noise=0.0,
+                 angle_noise=0,
+                 color_noise=None,
+                 gray_scale=False):
+        self.words = np.array(words)
+        self.max_word = max([len(word) for word in self.words])
+        self.font_size = font_size
+        self.bg_noise = np.clip(bg_noise, 0., 0.5)
+        self.angle_noise = angle_noise
+        self.gray_scale = gray_scale
+        self.paint_text = lambda word: paint_text(word,
+                                                  self.max_word,
+                                                  self.font_size,
+                                                  color_noise)
+
+    def __len__(self):
+        # 전체 데이터 셋
+        return len(self.words)
+
+    def __getitem__(self, index):
+        """
+        (1) index -> integer일 때, get single item
+        (2) index -> np.array | slice, get batch items
+        """
+        #
+        if isinstance(index, int):
+            word = self.words[index]
+            image = self.paint_text(word)
+            if self.bg_noise > 0:
+                image = gaussian_noise(image, self.bg_noise)
+            if self.angle_noise > 0:
+                image = random_rotate(image, self.angle_noise)
+            if self.gray_scale:
+                image = (0.3 * image[:, :, 0]
+                         + 0.59 * image[:, :, 1]
+                         + 0.11 * image[:, :, 2])
+                image = image[:, :, None]
+
+            return image, word
+        else:
+            words = self.words[index]
+            images = []
+            for word in words:
+                image = self.paint_text(word)
+                if self.bg_noise > 0:
+                    image = gaussian_noise(image, self.bg_noise)
+                if self.angle_noise > 0:
+                    image = random_rotate(image, self.angle_noise)
+                if self.gray_scale:
+                    image = (0.3 * image[:, :, 0]
+                             + 0.59 * image[:, :, 1]
+                             + 0.11 * image[:, :, 2])
+                    image = image[:, :, None]
+                images.append(image)
+            return np.stack(images), words
+
+    def shuffle(self):
+        np.random.shuffle(self.words)
+
+
+def paint_text(text, max_word=None, font_size=FONT_SIZE, color_noise=None):
+    '''
+    Text가 그려진 이미지를 만드는 함수
+
+    max
+    '''
+    if max_word is None:
+        # None이면, text의 word 갯수에 맞춰서 생성
+        max_word = len(text)
+    h = font_size + 8  # 이미지 높이, font_size + padding
+    w = font_size * max_word + 8  # 이미지 폭
+
+    surface = cairo.ImageSurface(cairo.FORMAT_RGB24, w, h)
+    with cairo.Context(surface) as context:
+        context.set_source_rgb(1, 1, 1)  # White
+        context.paint()
+
+        # Font Style : Random Pick
+        context.select_font_face(
+            np.random.choice(FONT_LIST),
+            cairo.FONT_SLANT_NORMAL,
+            np.random.choice([cairo.FONT_WEIGHT_BOLD,
+                              cairo.FONT_WEIGHT_NORMAL]))
+
+        context.set_font_size(font_size)
+        box = context.text_extents(text)
+        border_w_h = (4, 4)
+        if (box[2] > (w - 2 * border_w_h[1])
+            or box[3] > (h - 2 * border_w_h[0])):
+            raise IOError(('Could not fit string into image.'
+                           'Max char count is too large for given image width.'))
+
+        # Random Shift을 통해, 이미지 Augmentation
+        max_shift_x = w - box[2] - border_w_h[0]
+        max_shift_y = h - box[3] - border_w_h[1]
+        top_left_x = np.random.randint(0, int(max_shift_x))
+        top_left_y = np.random.randint(0, int(max_shift_y))
+
+        context.move_to(top_left_x - int(box[0]),
+                        top_left_y - int(box[1]))
+
+        # Draw Text
+        if color_noise is None:
+            context.set_source_rgb(0, 0, 0)
+        else:
+            rgb = np.random.uniform(*color_noise, size=3)
+            context.set_source_rgb(*rgb)
+
+        context.show_text(text)
+
+    # cairo data format to numpy data format
+    buf = surface.get_data()
+    text_image = np.frombuffer(buf, np.uint8)
+    text_image = text_image.reshape(h, w, 4)
+    text_image = text_image[:, :, :3]
+    text_image = text_image.astype(np.float32) / 255
+
+    return text_image
+
+
+def gaussian_noise(image, noise=0.1):
+    '''
+    이미지에 가우시안 잡음을 넣어주는 함수
+    Data Augmentation을 적용하기 위함
+    '''
+    image = image + np.random.normal(0, noise, size=image.shape)
+    return np.clip(image, 0, 1)
+
+
+def random_rotate(image, max_angle=30):
+    """
+    이미지에 회전 노이즈를 넣은 함수
+    :param image:
+    :param max_angle:
+    :return:
+    """
+    h, w = image.shape[:2]
+    angle = np.random.randint(-max_angle, max_angle)
+    M = cv2.getRotationMatrix2D((w // 2, h // 2), angle, 1.)
+    return cv2.warpAffine(image, M, (w, h))
 
 
 class SerializationDataset:
@@ -50,10 +217,10 @@ class SerializationDataset:
         """
         self.images, self.labels = load_dataset(dataset, data_type)
         if isinstance(digit, int):
-            self.digit_range = (digit, digit+1)
+            self.digit_range = (digit, digit + 1)
         else:
             self.digit_range = digit
-        self.num_data = len(self.labels) // (self.digit_range[1]-1)
+        self.num_data = len(self.labels) // (self.digit_range[1] - 1)
         self.index_list = np.arange(len(self.labels))
 
         self.bg_noise = bg_noise
@@ -67,8 +234,8 @@ class SerializationDataset:
     def __getitem__(self, index):
         if isinstance(index, int):
             num_digit = np.random.randint(*self.digit_range)
-            start_index = (self.digit_range[1]-1) * index
-            digits = self.index_list[start_index :start_index + num_digit]
+            start_index = (self.digit_range[1] - 1) * index
+            digits = self.index_list[start_index:start_index + num_digit]
 
             digit_images = self.images[digits]
             digit_labels = self.labels[digits].values
@@ -82,7 +249,7 @@ class SerializationDataset:
             for _index in indexes:
                 num_digit = np.random.randint(*self.digit_range)
                 start_index = (self.digit_range[1] - 1) * _index
-                digits = self.index_list[start_index :start_index + num_digit]
+                digits = self.index_list[start_index:start_index + num_digit]
 
                 digit_images = self.images[digits]
                 digit_labels = self.labels[digits].values
@@ -197,6 +364,14 @@ def load_dataset(dataset, data_type):
     images = images / 255  # normalization, 0~1
     labels = df.label  # label information
     return images, labels
+
+
+# Download korean word file path
+KOR_WORD_FILE_PATH = os.path.join(DATASET_DIR,"korean_word.csv")
+if not os.path.exists(KOR_WORD_FILE_PATH):
+    import wget
+    wget.download('https://pai-datasets.s3.ap-northeast-2.amazonaws.com/all-about-mnist/korean_word.csv',
+                  out=KOR_WORD_FILE_PATH)
 
 
 if __name__ == '__main__':
