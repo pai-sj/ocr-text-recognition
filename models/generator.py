@@ -11,8 +11,8 @@ KOR2IDX = { char : idx for idx, char in enumerate(KOR_CHARS )}
 class OCRGenerator(Sequence):
     "Generates OCR TEXT Recognition Dataset for Keras"
 
-    def __init__(self, dataset, char_list=KOR_CHARS,
-                 batch_size=32, shuffle=True, eos_token=False):
+    def __init__(self, dataset, char_list=None,
+                 batch_size=32, shuffle=True):
         """
         Initialization
 
@@ -21,19 +21,21 @@ class OCRGenerator(Sequence):
         :param char_list : unique character list (for Embedding)
         :param batch_size : the number of batch
         :param shuffle : whether shuffle dataset or not
-        :param eos_token : whether append <eos> token to the last of sequence or not
         """
         self.dataset = dataset
-        self.char_list = char_list
-        self.char2idx = {char: idx
-                         for idx, char
-                         in enumerate(self.char_list)}
+        if char_list is None:
+            self.char_list = KOR_CHARS
+            self.char2idx = KOR2IDX
+        else:
+            self.char_list = char_list
+            self.char2idx = {char: idx
+                             for idx, char
+                             in enumerate(self.char_list)}
 
         self.batch_size = batch_size
-        self.max_length = self.dataset.max_word + 1 # With EOS token for Last label
+        self.max_length = self.dataset.max_word + 1 # With blank time step for Last label
         self.shuffle = shuffle
-        self.eos = eos_token
-        self.num_classes = len(self.char_list) + 1  # With EOS token for CTC LOSS
+        self.num_classes = len(self.char_list) + 1 # With Blank Token
         self.on_epoch_end()
 
     def __len__(self):
@@ -49,9 +51,6 @@ class OCRGenerator(Sequence):
         labels *= -1  # BLANK Token value : -1
         for idx, text in enumerate(texts):
             labels[idx, :len(text)] = text2label(text, self.char2idx)
-            if self.eos:
-                labels[idx, len(text)] = self.num_classes - 1
-
         return images, labels
 
     def on_epoch_end(self):
@@ -88,7 +87,7 @@ class DataGenerator(Sequence):
         batch_images = images[..., np.newaxis]
 
         # label sequence
-        batch_labels = np.ones([self.batch_size, self.max_length], np.int32)
+        batch_labels = np.ones([self.batch_size, self.max_length+1], np.int32)
         batch_labels *= -1  # EOS Token value : -1
         for idx, label in enumerate(labels):
             batch_labels[idx, :len(label)] = label
