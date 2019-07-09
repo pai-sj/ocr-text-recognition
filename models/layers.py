@@ -5,6 +5,7 @@ Mail : rocketgrowthsj@gmail.com
 from tensorflow.python.keras.layers import Conv2D, Layer
 from tensorflow.python.keras.layers import MaxPooling2D, BatchNormalization
 from tensorflow.python.keras.layers import Bidirectional, LSTM
+from tensorflow.python.keras.layers import Softmax
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import get_custom_objects
 import tensorflow as tf
@@ -181,16 +182,45 @@ class CTCDecoder(Layer):
         return dict(list(base_config.items()) + list(config.items()))
 
 
+class DotAttention(Layer):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def call(self, inputs, **kwargs):
+        states_encoder = inputs[0]
+        states_decoder = inputs[1]
+
+        # (1) Calculate Score
+        expanded_states_encoder = states_encoder[:, None, ...]
+        # >>> (batch size, 1, length of encoder sequence, num hidden)
+        expanded_states_decoder = states_decoder[..., None, :]
+        # >>> (batch size, length of decoder sequence, 1, num hidden)
+        score = K.sum(expanded_states_encoder * expanded_states_decoder,
+                      axis=-1)
+        # >>> (batch size, length of decoder input, length of encoder input)
+
+        # (2) Normalize score
+        attention = Softmax(axis=-1, name='attention')(score)
+
+        # (3) Calculate Context Vector
+        context = K.sum(expanded_states_encoder * attention[..., None], axis=2)
+        # >>> (batch size, length of decoder input, num hidden)
+
+        return context, attention
+
+
 __all__ = ["ConvFeatureExtractor",
            "Map2Sequence",
            "BLSTMEncoder",
-           "CTCDecoder"]
+           "CTCDecoder",
+           "DotAttention"]
 
 get_custom_objects().update({
     "ConvFeatureExtractor" : ConvFeatureExtractor,
     "Map2Sequence" : Map2Sequence,
     "BLSTMEncoder" : BLSTMEncoder,
-    "CTCDecoder" : CTCDecoder
+    "CTCDecoder" : CTCDecoder,
+    "DotAttention": DotAttention
 })
 
 

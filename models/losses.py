@@ -38,4 +38,25 @@ def ctc_loss(y_true, y_pred):
                             input_length, label_length)
 
 
+def masking_sparse_categorical_crossentropy(mask_value):
+    """
+    Runs sparse Categorical Crossentropy Loss Algorithm on each batch element Without Masking Value
+
+    :param mask_value: masking value for preventing Back Propagation
+    :return:
+    """
+    mask_value = K.variable(mask_value)
+
+    def loss(y_true, y_pred):
+        y_true = K.cast(y_true, K.floatx())
+        mask = K.equal(y_true, mask_value)
+        mask = 1 - K.cast(mask, K.floatx())
+
+        loss = K.sparse_categorical_crossentropy(y_true, y_pred) * mask
+        return K.sum(loss) / K.sum(mask)
+
+    return loss
+
+
+
 get_custom_objects().update({'ctc_loss' : ctc_loss})
