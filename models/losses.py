@@ -51,6 +51,7 @@ def masking_sparse_categorical_crossentropy(mask_value):
         y_true = K.cast(y_true, K.floatx())
         mask = K.equal(y_true, mask_value)
         mask = 1 - K.cast(mask, K.floatx())
+        y_true = y_true * mask
 
         loss = K.sparse_categorical_crossentropy(y_true, y_pred) * mask
         return K.sum(loss) / K.sum(mask)
