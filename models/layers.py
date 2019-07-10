@@ -4,6 +4,7 @@ Mail : rocketgrowthsj@gmail.com
 """
 from tensorflow.python.keras.layers import Conv2D, Layer
 from tensorflow.python.keras.layers import MaxPooling2D, BatchNormalization
+from tensorflow.python.keras.layers import LayerNormalization
 from tensorflow.python.keras.layers import Bidirectional, LSTM
 from tensorflow.python.keras.layers import Softmax
 from tensorflow.python.keras import backend as K
@@ -35,12 +36,12 @@ class ConvFeatureExtractor(Layer):
     | maxpool2   | -     | (2,2)  | (2,2)  | same    | -    |
     | conv3      | 256   | (3,3)  | (1,1)  | same    | relu |
     | conv4      | 256   | (3,3)  | (1,1)  | same    | relu |
-    | maxpool3   | -     | (2,1)  | (2,1)  | same    | -    |
+    | maxpool3   | -     | (1,2)  | (1,2)  | same    | -    |
     | batchnorm1 | -     | -      | -      | -       | -    |
     | conv5      | 512   | (3,3)  | (1,1)  | same    | relu |
     | batchnorm2 | -     | -      | -      | -       | -    |
     | conv6      | 512   | (3,3)  | (1,1)  | same    | relu |
-    | maxpool4   | -     | (2,1)  | (2,1)  | same    | -    |
+    | maxpool4   | -     | (1,2)  | (1,2)  | same    | -    |
     | conv7      | 512   | (3,3)  | (1,1)  | valid   | relu |
 
 
@@ -58,12 +59,12 @@ class ConvFeatureExtractor(Layer):
         self.maxpool2 = MaxPooling2D((2, 2), (2, 2), padding='same')
         self.conv3 = Conv2D(n_hidden*4, (3, 3), activation='relu', padding='same')
         self.conv4 = Conv2D(n_hidden*4, (3, 3), activation='relu', padding='same')
-        self.maxpool3 = MaxPooling2D((2, 1), (2, 1), padding='same')
+        self.maxpool3 = MaxPooling2D((1, 2), (1, 2), padding='same')
         self.batchnorm1 = BatchNormalization()
         self.conv5 = Conv2D(n_hidden*8, (3, 3), activation='relu', padding='same')
         self.batchnorm2 = BatchNormalization()
         self.conv6 = Conv2D(n_hidden*8, (3, 3), activation='relu', padding='same')
-        self.maxpool4 = MaxPooling2D((2, 1), (2, 1), padding='same')
+        self.maxpool4 = MaxPooling2D((1, 2), (1, 2), padding='same')
         self.conv7 = Conv2D(n_hidden*8, (2, 2), activation='relu', padding='valid')
 
     def call(self, inputs, **kwargs):
@@ -87,6 +88,69 @@ class ConvFeatureExtractor(Layer):
         }
         base_config = super().get_config()
         return dict(list(base_config.items()) + list(config.items()))
+
+
+class KakaoConvFeatureExtractor(Layer):
+    """
+    KAKAO Style Text Recognition Model
+    [ conv2d - layer norm - conv2d - layer norm - maxpool ] * 3
+
+
+
+    특징
+     1. Batch Normalization 대신 Layer Normalization
+
+    """
+    def __init__(self, n_hidden=64, **kwargs):
+        self.n_hidden = n_hidden
+        super().__init__(**kwargs)
+        # for builing Layer and Weight
+        self.conv1_1 = Conv2D(n_hidden, (3, 3), activation='relu', padding='same')
+        self.lnorm1_1 = LayerNormalization(axis=(2, 3))
+        self.conv1_2 = Conv2D(n_hidden, (3, 3), activation='relu', padding='same')
+        self.lnorm1_2 = LayerNormalization(axis=(2, 3))
+        self.maxpool1 = MaxPooling2D((2, 2), (2, 2), padding='same')
+
+        self.conv2_1 = Conv2D(n_hidden*2, (3, 3), activation='relu', padding='same')
+        self.lnorm2_1 = LayerNormalization(axis=(2, 3))
+        self.conv2_2 = Conv2D(n_hidden*2, (3, 3), activation='relu', padding='same')
+        self.lnorm2_2 = LayerNormalization(axis=(2, 3))
+        self.maxpool2 = MaxPooling2D((1, 2), (1, 2), padding='same')
+
+        self.conv3_1 = Conv2D(n_hidden*4, (3, 3), activation='relu', padding='same')
+        self.lnorm3_1 = LayerNormalization(axis=(2, 3))
+        self.conv3_2 = Conv2D(n_hidden*4, (3, 3), activation='relu', padding='same')
+        self.lnorm3_2 = LayerNormalization(axis=(2, 3))
+        self.maxpool3 = MaxPooling2D((1, 2), (1, 2), padding='same')
+
+    def call(self, inputs, **kwargs):
+        x = self.conv1_1(inputs)
+        x = self.lnorm1_1(x)
+        x = self.conv1_2(x)
+        x = self.lnorm1_2(x)
+        x = self.maxpool1(x)
+
+        x = self.conv2_1(x)
+        x = self.lnorm2_1(x)
+        x = self.conv2_2(x)
+        x = self.lnorm2_2(x)
+        x = self.maxpool2(x)
+
+        x = self.conv3_1(x)
+        x = self.lnorm3_1(x)
+        x = self.conv3_2(x)
+        x = self.lnorm3_2(x)
+        x = self.maxpool3(x)
+        return x
+
+
+    def get_config(self):
+        config = {
+            "n_hidden": self.n_hidden
+        }
+        base_config = super().get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
 
 
 class Map2Sequence(Layer):
