@@ -21,6 +21,8 @@ Reference :
 2. GRU Attention Decoder,
    Robust Scene Text Recognition With Automatic Rectification
 
+3. KaKao OCR Blog,
+   카카오 OCR 시스템 구성과 모델, https://brunch.co.kr/@kakao-it/318
 """
 
 
@@ -90,15 +92,17 @@ class ConvFeatureExtractor(Layer):
         return dict(list(base_config.items()) + list(config.items()))
 
 
-class KakaoConvFeatureExtractor(Layer):
+class ResidualConvFeatureExtractor(Layer):
     """
-    KAKAO Style Text Recognition Model
+    Residual Block & KAKAO OCR Like Text Recognition Model
     [ conv2d - layer norm - conv2d - layer norm - maxpool ] * 3
 
-
-
     특징
-     1. Batch Normalization 대신 Layer Normalization
+     1. Batch Normalization 대신 Layer Normalization을 이용(높이와 채널 축으로만 진행)
+        RNN 모델에서는 주로 BN 보다는 LN을 쓴다고 함.
+        Layer Normalization은 Hidden unit들에 대해서 Mean과 Variance를 구함
+     2. KAKAO와 달리 Block 수를 4개로 진행 (보다 넓은 범위를 탐색하기 위함)
+     3. Residual Block을 두어서 보다 빠르게 학습가능하도록 설정
 
     """
     def __init__(self, n_hidden=64, **kwargs):
@@ -106,22 +110,32 @@ class KakaoConvFeatureExtractor(Layer):
         super().__init__(**kwargs)
         # for builing Layer and Weight
         self.conv1_1 = Conv2D(n_hidden, (3, 3), activation='relu', padding='same')
-        self.lnorm1_1 = LayerNormalization(axis=(2, 3))
-        self.conv1_2 = Conv2D(n_hidden, (3, 3), activation='relu', padding='same')
-        self.lnorm1_2 = LayerNormalization(axis=(2, 3))
+        self.lnorm1_1 = LayerNormalization(axis=(2, 3)) # Normalizing height & Channel
+        self.conv1_2 = Conv2D(n_hidden, (3, 3), padding='same')
+        self.lnorm1_2 = LayerNormalization(axis=(2, 3)) # Normalizing height & Channel
         self.maxpool1 = MaxPooling2D((2, 2), (2, 2), padding='same')
 
+        self.conv2_skip = Conv2D(n_hidden*2, (1, 1), activation='relu', padding='same')
         self.conv2_1 = Conv2D(n_hidden*2, (3, 3), activation='relu', padding='same')
-        self.lnorm2_1 = LayerNormalization(axis=(2, 3))
-        self.conv2_2 = Conv2D(n_hidden*2, (3, 3), activation='relu', padding='same')
-        self.lnorm2_2 = LayerNormalization(axis=(2, 3))
-        self.maxpool2 = MaxPooling2D((1, 2), (1, 2), padding='same')
+        self.lnorm2_1 = LayerNormalization(axis=(2, 3)) # Normalizing height & Channel
+        self.conv2_2 = Conv2D(n_hidden*2, (3, 3), padding='same')
+        self.lnorm2_2 = LayerNormalization(axis=(2, 3)) # Normalizing height & Channel
+        self.maxpool2 = MaxPooling2D((2, 2), (2, 2), padding='same')
 
+        self.conv3_skip = Conv2D(n_hidden * 4, (1, 1), activation='relu', padding='same')
         self.conv3_1 = Conv2D(n_hidden*4, (3, 3), activation='relu', padding='same')
-        self.lnorm3_1 = LayerNormalization(axis=(2, 3))
-        self.conv3_2 = Conv2D(n_hidden*4, (3, 3), activation='relu', padding='same')
-        self.lnorm3_2 = LayerNormalization(axis=(2, 3))
+        self.lnorm3_1 = LayerNormalization(axis=(2, 3)) # Normalizing height & Channel
+        self.conv3_2 = Conv2D(n_hidden*4, (3, 3), padding='same')
+        self.lnorm3_2 = LayerNormalization(axis=(2, 3)) # Normalizing height & Channel
         self.maxpool3 = MaxPooling2D((1, 2), (1, 2), padding='same')
+
+        self.conv4_skip = Conv2D(n_hidden * 4, (1, 1), activation='relu', padding='same')
+        self.conv4_1 = Conv2D(n_hidden*4, (3, 3), activation='relu', padding='same')
+        self.lnorm4_1 = LayerNormalization(axis=(2, 3)) # Normalizing height & Channel
+        self.conv4_2 = Conv2D(n_hidden*4, (3, 3), padding='same')
+        self.lnorm4_2 = LayerNormalization(axis=(2, 3)) # Normalizing height & Channel
+        self.maxpool4 = MaxPooling2D((1, 2), (1, 2), padding='same')
+        self.built = True
 
     def call(self, inputs, **kwargs):
         x = self.conv1_1(inputs)
@@ -130,19 +144,30 @@ class KakaoConvFeatureExtractor(Layer):
         x = self.lnorm1_2(x)
         x = self.maxpool1(x)
 
+        skip = self.conv2_skip(x)
         x = self.conv2_1(x)
         x = self.lnorm2_1(x)
         x = self.conv2_2(x)
         x = self.lnorm2_2(x)
+        x = K.relu(skip + x)
         x = self.maxpool2(x)
 
+        skip = self.conv3_skip(x)
         x = self.conv3_1(x)
         x = self.lnorm3_1(x)
         x = self.conv3_2(x)
         x = self.lnorm3_2(x)
+        x = K.relu(skip + x)
         x = self.maxpool3(x)
-        return x
 
+        skip = self.conv4_skip(x)
+        x = self.conv4_1(x)
+        x = self.lnorm4_1(x)
+        x = self.conv4_2(x)
+        x = self.lnorm4_2(x)
+        x = K.relu(skip + x)
+        x = self.maxpool4(x)
+        return x
 
     def get_config(self):
         config = {
@@ -150,7 +175,6 @@ class KakaoConvFeatureExtractor(Layer):
         }
         base_config = super().get_config()
         return dict(list(base_config.items()) + list(config.items()))
-
 
 
 class Map2Sequence(Layer):
