@@ -249,6 +249,132 @@ def jamos2label(jamos):
     return np.array([JAMO2IDX[char] for char in jamos])
 
 
+class JAMOCOMBSeq2SeqGenerator(Sequence):
+    "초성 중성 종성 각각 나누어서 Return"
+
+    def __init__(self, dataset, batch_size=32,
+                 blank_value=-1, shuffle=True,
+                 return_initial_state=True, state_size=512):
+        """
+        Initialization
+
+        param
+        :param dataset : instance of class 'OCRDataset'
+        :param batch_size : the number of batch
+        :param blank_value : the value of `blank` label
+        :param shuffle : whether shuffle dataset or not
+        :param return_initial_state : Whether return Initial state(Zero state) or not
+        :param state_size : if return_initial_state is True, the size of initial state
+        """
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.max_length = self.dataset.max_word + 1 # word +1
+        self.blank_value = blank_value
+        self.shuffle = shuffle
+        self.onset_classes = len(초성)
+        self.nucleus_classes = len(중성)
+        self.coda_classes = len(종성)
+        self.return_initial_state = return_initial_state
+        self.state_size = state_size
+        self.on_epoch_end()
+
+    def __len__(self):
+        "Denotes the number of batches per epoch"
+        return len(self.dataset) // self.batch_size
+
+    def __getitem__(self, index):
+        "Generator one batch of dataset"
+        images, texts = self.dataset[self.batch_size * index:
+                                     self.batch_size * (index + 1)]
+        # label sequence
+        onset_labels = np.ones([self.batch_size, self.max_length], np.int32) * -1
+        nucleus_labels = np.ones([self.batch_size, self.max_length], np.int32) * -1
+        coda_labels = np.ones([self.batch_size, self.max_length], np.int32) * -1
+        for idx, text in enumerate(texts):
+            onset_seq, nucleus_seq, coda_seq = self.decompose(text)
+            onset_labels[idx, :len(onset_seq)] = onset_seq
+            onset_labels[idx, len(onset_seq)] = self.onset_classes
+            nucleus_labels[idx, :len(nucleus_seq)] = nucleus_seq
+            nucleus_labels[idx, len(nucleus_seq)] = self.nucleus_classes
+            coda_labels[idx, :len(coda_seq)] = coda_seq
+            coda_labels[idx, len(coda_seq)] = self.coda_classes
+
+        target_onset_inputs = np.roll(onset_labels, 1, axis=1)
+        target_onset_inputs[:, 0] = self.onset_classes # <EOS> Token
+        target_onset_inputs[target_onset_inputs==-1] = self.onset_classes # <EOS> Token
+
+        target_nucleus_inputs = np.roll(nucleus_labels, 1, axis=1)
+        target_nucleus_inputs[:, 0] = self.nucleus_classes# <EOS> Token
+        target_nucleus_inputs[target_nucleus_inputs ==-1] = self.nucleus_classes # <EOS> Token
+
+        target_coda_inputs = np.roll(coda_labels, 1, axis=1)
+        target_coda_inputs[:, 0] = self.coda_classes # <EOS> Token
+        target_coda_inputs[target_coda_inputs==-1] = self.coda_classes # <EOS> Token
+
+        X = {
+            "images": images,
+            "decoder_onset_inputs": target_onset_inputs,
+            "decoder_nucleus_inputs": target_nucleus_inputs,
+            "decoder_coda_inputs": target_coda_inputs
+        }
+        # return initial state
+        if self.return_initial_state:
+            batch_size = images.shape[0]
+            X['decoder_state'] = np.zeros([batch_size, self.state_size])
+
+        Y = {
+            "onset_seqs": onset_labels,
+            "nucleus_seqs": nucleus_labels,
+            "coda_seqs": coda_labels
+        }
+
+        return X, Y
+
+    def on_epoch_end(self):
+        "Updates indexes after each epoch"
+        if self.shuffle:
+            self.dataset.shuffle()
+
+    @classmethod
+    def convert2text(cls, arr: np.ndarray):
+        if arr.ndim == 1:
+            arr = np.expand_dims(arr, axis=0)
+        df = pd.DataFrame(arr)
+        df = df.applymap(lambda x : JAMOS[x])
+        texts = df.apply(lambda x: compose("".join(x)).replace("\n", ""), axis=1).values
+        return texts
+
+    @classmethod
+    def decompose(self, text):
+        onsets = []
+        nucleuses = []
+        codas = []
+        for char in text:
+            onset_idx = ((ord(char) - 44032) // 28) // 21
+            nucleus_idx = ((ord(char) - 44032) // 28) % 21
+            coda_idx = (ord(char) - 44032) % 28
+            onsets.append(onset_idx)
+            nucleuses.append(nucleus_idx)
+            codas.append(coda_idx)
+
+        return np.array(onsets), np.array(nucleuses), np.array(codas)
+
+    @classmethod
+    def compose(self, onsets, nucleuses, codas):
+        text = ""
+        for onset_idx, nucleus_idx, coda_idx in zip(onsets, nucleuses, codas):
+            if (onset_idx >= len(초성)
+               or nucleus_idx >= len(중성)
+               or coda_idx >= len(종성)):
+                break
+            if (onset_idx < 0
+               or nucleus_idx < 0
+               or coda_idx < 0):
+                continue
+            text += chr(int((onset_idx*21 + nucleus_idx)*28+coda_idx+44032))
+        return text
+
+
 class DataGenerator(Sequence):
     "Generates Text Recognition Dataset for Keras"
 
