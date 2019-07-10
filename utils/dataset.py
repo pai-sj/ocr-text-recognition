@@ -24,7 +24,102 @@ DATASET_DIR = "/".join(dirnames + ['datasets'])
 DOWNLOAD_URL_FORMAT = "https://s3.ap-northeast-2.amazonaws.com/pai-datasets/all-about-mnist/{}/{}.csv"
 
 FONT_LIST = [f.name for f in fm.fontManager.ttflist]
-FONT_LIST = list(set([f for f in FONT_LIST if "Nanum" in f]))
+FONT_LIST = list(set([f for f in FONT_LIST if "Nanum" in f and not 'Square' in f]))
+
+
+class OCRRandomDataset:
+    """
+    generate OCR dataset for Text Recognition not using Dicitonary word
+
+
+
+    :param word_range : 철자의 길이 범위
+    :param bg_noise : 가우시안 노이즈의 강도 (0.0~0.5)
+    """
+
+    def __init__(self, word_range, font_size,
+                 max_data=10000,
+                 bg_noise=0.0,
+                 affine_noise=(0.0, 0.02),
+                 color_noise=(0.0, 0.6),
+                 normalize=False,
+                 random_shift=True,
+                 gray_scale=True):
+        self.word_range = word_range
+        self.max_word = word_range[1]
+        self.max_data = max_data
+        self.font_size = font_size
+        self.bg_noise = np.clip(bg_noise, 0., 0.5)
+        self.gray_scale = gray_scale
+        self.aug = iaa.PiecewiseAffine(scale=affine_noise)
+        self.normalize = normalize
+        self.random_shift = random_shift
+        self.color_noise = color_noise
+        self.paint_text = lambda word: paint_text(word,
+                                                  self.max_word,
+                                                  self.font_size,
+                                                  self.color_noise,
+                                                  self.random_shift)
+
+    def __len__(self):
+        # Default Value
+        return self.max_data
+
+    def __getitem__(self, index):
+        """
+        (1) index -> integer일 때, get single item
+        (2) index -> np.array | slice, get batch items
+        """
+        #
+        if isinstance(index, int):
+            w_range = np.random.randint(self.word_range[0],
+                                        self.word_range[1]+1)
+            word = "".join([chr(idx)
+                            for idx
+                            in np.random.randint(ord('가'), ord('힣') + 1, w_range)])
+            image = self.paint_text(word)
+            if self.bg_noise > 0:
+                image = gaussian_noise(image, self.bg_noise)
+            image = self.aug.augment_image(image)
+            if self.gray_scale:
+                image = (0.3 * image[:, :, 0]
+                         + 0.59 * image[:, :, 1]
+                         + 0.11 * image[:, :, 2])
+                image = image[:, :, None]
+            image = (image * 255).astype(np.uint8)
+            return image, word
+        else:
+            indices = np.arange(self.max_data)[index]
+            images = []
+            words = []
+            for _ in indices:
+                w_range = np.random.randint(self.word_range[0],
+                                            self.word_range[1] + 1)
+                word_indices = np.random.randint(ord('가'), ord('힣') + 1, w_range)
+                word = "".join([chr(idx) for idx in word_indices])
+                image = self.paint_text(word)
+
+                if self.bg_noise > 0:
+                    noise = np.random.uniform(0, self.bg_noise)
+                    image = gaussian_noise(image, noise)
+
+                image = self.aug.augment_image(image)
+                if self.gray_scale:
+                    image = (0.3 * image[:, :, 0]
+                             + 0.59 * image[:, :, 1]
+                             + 0.11 * image[:, :, 2])
+                    image = image[:, :, None]
+                images.append(image)
+                words.append(word)
+
+            images = np.stack(images)
+            if self.normalize:
+                images = (images * 255).astype(np.uint8)
+            words = np.array(words)
+            return images, words
+
+    def shuffle(self):
+        pass
 
 
 class OCRDataset:
@@ -41,6 +136,8 @@ class OCRDataset:
                  bg_noise=0.0,
                  affine_noise=(0.0, 0.02),
                  color_noise=(0.0, 0.6),
+                 normalize=False,
+                 random_shift=True,
                  gray_scale=True):
         self.words = np.array(words)
         self.max_word = max([len(word) for word in self.words])
@@ -48,11 +145,14 @@ class OCRDataset:
         self.bg_noise = np.clip(bg_noise, 0., 0.5)
         self.gray_scale = gray_scale
         self.aug = iaa.PiecewiseAffine(scale=affine_noise)
+        self.normalize = normalize
+        self.random_shift = random_shift
         self.color_noise = color_noise
         self.paint_text = lambda word: paint_text(word,
                                                   self.max_word,
                                                   self.font_size,
-                                                  self.color_noise)
+                                                  self.color_noise,
+                                                  self.random_shift)
 
     def __len__(self):
         # 전체 데이터 셋
@@ -75,7 +175,8 @@ class OCRDataset:
                          + 0.59 * image[:, :, 1]
                          + 0.11 * image[:, :, 2])
                 image = image[:, :, None]
-            image = (image * 255).astype(np.uint8)
+            if self.normalize:
+                image = (image * 255).astype(np.uint8)
             return image, word
         else:
             words = self.words[index]
@@ -92,14 +193,16 @@ class OCRDataset:
                              + 0.11 * image[:, :, 2])
                     image = image[:, :, None]
                 images.append(image)
-            images = (np.stack(images) * 255).astype(np.uint8)
+            images = np.stack(images)
+            if self.normalize:
+                images = (images * 255).astype(np.uint8)
             return images, words
 
     def shuffle(self):
         np.random.shuffle(self.words)
 
 
-def paint_text(text, max_word=None, font_size=28,color_noise=(0.,0.6)):
+def paint_text(text, max_word=None, font_size=28, color_noise=(0.,0.6), random_shift=True):
     '''
     Text가 그려진 이미지를 만드는 함수
 
@@ -133,8 +236,13 @@ def paint_text(text, max_word=None, font_size=28,color_noise=(0.,0.6)):
         # Random Shift을 통해, 이미지 Augmentation
         max_shift_x = w - box[2] - border_w_h[0]
         max_shift_y = h - box[3] - border_w_h[1]
-        top_left_x = np.random.randint(0, int(max_shift_x))
-        top_left_y = np.random.randint(0, int(max_shift_y))
+
+        if random_shift:
+            top_left_x = np.random.randint(0, int(max_shift_x))
+            top_left_y = np.random.randint(0, int(max_shift_y))
+        else:
+            top_left_x = np.random.randint(3, 10) # Default padding
+            top_left_y = int(max_shift_y)//2 # Default position = center in heights
 
         context.move_to(top_left_x - int(box[0]),
                         top_left_y - int(box[1]))
