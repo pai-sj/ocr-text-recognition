@@ -7,8 +7,11 @@ from tensorflow.python.keras.layers import MaxPooling2D, BatchNormalization
 from tensorflow.python.keras.layers import LayerNormalization
 from tensorflow.python.keras.layers import Bidirectional, LSTM
 from tensorflow.python.keras.layers import Softmax, Dense
+from tensorflow.python.keras.layers import Embedding
+from tensorflow.python.keras.layers import Concatenate
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import get_custom_objects
+from .generator import 초성, 중성, 종성
 import tensorflow as tf
 
 """
@@ -312,6 +315,109 @@ class DotAttention(Layer):
     def get_config(self):
         config = {
             "n_state": self.n_state
+        }
+        base_config = super().get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+
+class JamoEmbedding(Layer):
+    """ 한글 Unicode 번호를 Jamo 별로 Decompose 후 각각 Embedding 하는 Module Class
+    """
+
+    def __init__(self, n_embed=16, **kwargs):
+        super().__init__(**kwargs)
+        self.n_embed = 16
+        # input_dim : 자모자 갯수 + <EOS> Token
+        self.초성_layer = Embedding(input_dim=len(초성) + 1,
+                                   output_dim=n_embed)
+        self.중성_layer = Embedding(input_dim=len(중성) + 1,
+                                   output_dim=n_embed)
+        self.종성_layer = Embedding(input_dim=len(종성) + 1,
+                                   output_dim=n_embed)
+
+    def call(self, inputs, **kwargs):
+        # (1) decompose : 자모자로 분리하기
+        inputs = tf.cast(inputs, dtype=tf.int32)
+        # # <EOS> Token & <BLANK> Token mask
+        mask = (tf.not_equal(inputs, ord('\n')) & tf.not_equal(inputs, -1))
+
+        초성_arr = ((inputs - 44032) // 28) // 21
+        초성_arr = tf.where(mask, 초성_arr, tf.ones_like(초성_arr)*len(초성))
+
+        중성_arr = ((inputs - 44032) // 28) % 21
+        중성_arr = tf.where(mask, 중성_arr, tf.ones_like(중성_arr)*len(중성))
+
+        종성_arr = (inputs - 44032) % 28
+        종성_arr = tf.where(mask, 종성_arr, tf.ones_like(종성_arr)*len(종성))
+
+        # (2) embed : Embedding Layer 통과하기
+        초성_embed = self.초성_layer(초성_arr)
+        중성_embed = self.중성_layer(중성_arr)
+        종성_embed = self.종성_layer(종성_arr)
+
+        # (3) concat : 하나의 embedding Vector로 쌓기
+        return K.concatenate([초성_embed, 중성_embed, 종성_embed],
+                             axis=-1)
+
+    def get_config(self):
+        config = {
+            "n_embed": self.n_embed
+        }
+        base_config = super().get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+
+class JamoCompose(Layer):
+    """ 자모자 Compose하여 Unicode 숫자로 바꾸어주는 Module Layer
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def call(self, inputs, **kwargs):
+        초성_arr, 중성_arr, 종성_arr = tf.split(inputs,
+                                            [len(초성)+1,len(중성)+1,len(종성)+1],
+                                            axis=-1)
+        초성_arr = tf.cast(tf.argmax(초성_arr, axis=-1),dtype=K.floatx())
+        중성_arr = tf.cast(tf.argmax(중성_arr, axis=-1),dtype=K.floatx())
+        종성_arr = tf.cast(tf.argmax(종성_arr, axis=-1),dtype=K.floatx())
+
+        eos_mask = (tf.less(초성_arr, len(초성)) |
+                    tf.less(중성_arr, len(중성)) |
+                    tf.less(종성_arr, len(종성)))
+        eos_mask = K.print_tensor(eos_mask)
+        unicode_arr = tf.cast((초성_arr * 21 + 중성_arr) * 28 + 종성_arr + 44032,dtype=tf.int32)
+        unicode_arr = tf.where(eos_mask,unicode_arr,tf.ones_like(unicode_arr)*ord('\n'))
+        return unicode_arr
+
+
+class JamoClassifier(Layer):
+    """ 자모자 별로 분류하는 Classifier
+    자모별로 Dense Layer *2 & Softmax를 둚
+    """
+    def __init__(self, n_hidden, **kwargs):
+        super().__init__(**kwargs)
+        self.n_hidden = n_hidden
+        self.초성_fc = Dense(n_hidden, activation='relu', name='chosung_fc')
+        self.초성_clf = Dense(len(초성)+1, activation='softmax', name='chosung_output')
+
+        self.중성_fc = Dense(n_hidden, activation='relu', name='joongsung_fc')
+        self.중성_clf = Dense(len(중성)+1, activation='softmax', name='joongsung_output')
+
+        self.종성_fc = Dense(n_hidden, activation='relu', name='jongsung_fc')
+        self.종성_clf = Dense(len(종성)+1, activation='softmax', name='jongsung_output')
+
+        self.concat = Concatenate(axis=-1)
+        self.built = True
+
+    def call(self, inputs, **kwargs):
+        초성_output = self.초성_clf(self.초성_fc(inputs))
+        중성_output = self.중성_clf(self.중성_fc(inputs))
+        종성_output = self.종성_clf(self.종성_fc(inputs))
+        return self.concat([초성_output, 중성_output, 종성_output])
+
+    def get_config(self):
+        config = {
+            "n_hidden": self.n_hidden
         }
         base_config = super().get_config()
         return dict(list(base_config.items()) + list(config.items()))
