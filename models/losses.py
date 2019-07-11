@@ -5,6 +5,8 @@ Mail : rocketgrowthsj@gmail.com
 import tensorflow as tf
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import get_custom_objects
+from .jamo import 초성, 중성, 종성
+
 
 def ctc_loss(y_true, y_pred):
     """
@@ -58,6 +60,35 @@ def masking_sparse_categorical_crossentropy(mask_value):
 
     return loss
 
+def jamo_categorical_crossentropy(y_true, y_pred):
+    y_true = K.cast(y_true, tf.int32)
+    eos_mask = tf.not_equal(y_true, ord('\n'))
+    blank_mask = tf.not_equal(y_true, -1)
+
+    y_true_초성 = ((y_true - 44032) // 28) // 21
+    y_true_초성 = tf.where(eos_mask, y_true_초성, tf.ones_like(y_true_초성)*len(초성))
+    y_true_초성 = tf.where(blank_mask, y_true_초성, tf.zeros_like(y_true_초성))
+
+    y_true_중성 = ((y_true - 44032) // 28) % 21
+    y_true_중성 = tf.where(eos_mask, y_true_중성, tf.ones_like(y_true_중성)*len(중성))
+    y_true_중성 = tf.where(blank_mask, y_true_중성, tf.zeros_like(y_true_중성))
+
+    y_true_종성 = (y_true - 44032) % 28
+    y_true_종성 = tf.where(eos_mask, y_true_종성, tf.ones_like(y_true_종성)*len(종성))
+    y_true_종성 = tf.where(blank_mask, y_true_종성, tf.zeros_like(y_true_종성))
+
+    y_pred_초성,  y_pred_중성, y_pred_종성 = tf.split(y_pred,
+                                                [len(초성) + 1, len(중성) + 1, len(종성) + 1],
+                                                axis=-1)
+
+    mask = tf.cast(blank_mask, dtype=K.floatx())
+    loss_초성 = K.sparse_categorical_crossentropy(y_true_초성, y_pred_초성) * mask
+    loss_중성 = K.sparse_categorical_crossentropy(y_true_중성, y_pred_중성) * mask
+    loss_종성 = K.sparse_categorical_crossentropy(y_true_종성, y_pred_종성) * mask
+
+    return  K.sum(loss_초성 + loss_중성 + loss_종성) / K.sum(mask)
 
 
-get_custom_objects().update({'ctc_loss' : ctc_loss})
+get_custom_objects().update({
+    'ctc_loss' : ctc_loss,
+    'jamo_categorical_crossentropy' : jamo_categorical_crossentropy})
