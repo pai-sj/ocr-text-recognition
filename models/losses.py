@@ -60,6 +60,7 @@ def masking_sparse_categorical_crossentropy(mask_value):
 
     return loss
 
+
 def jamo_categorical_crossentropy(y_true, y_pred):
     y_true = K.cast(y_true, tf.int32)
     eos_mask = tf.not_equal(y_true, ord('\n'))

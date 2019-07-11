@@ -384,7 +384,6 @@ class JamoCompose(Layer):
         eos_mask = (tf.less(초성_arr, len(초성)) |
                     tf.less(중성_arr, len(중성)) |
                     tf.less(종성_arr, len(종성)))
-        eos_mask = K.print_tensor(eos_mask)
         unicode_arr = tf.cast((초성_arr * 21 + 중성_arr) * 28 + 종성_arr + 44032,dtype=tf.int32)
         unicode_arr = tf.where(eos_mask,unicode_arr,tf.ones_like(unicode_arr)*ord('\n'))
         return unicode_arr
