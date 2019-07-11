@@ -6,7 +6,7 @@ from tensorflow.python.keras.layers import Conv2D, Layer
 from tensorflow.python.keras.layers import MaxPooling2D, BatchNormalization
 from tensorflow.python.keras.layers import LayerNormalization
 from tensorflow.python.keras.layers import Bidirectional, LSTM
-from tensorflow.python.keras.layers import Softmax
+from tensorflow.python.keras.layers import Softmax, Dense
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import get_custom_objects
 import tensorflow as tf
@@ -38,12 +38,12 @@ class ConvFeatureExtractor(Layer):
     | maxpool2   | -     | (2,2)  | (2,2)  | same    | -    |
     | conv3      | 256   | (3,3)  | (1,1)  | same    | relu |
     | conv4      | 256   | (3,3)  | (1,1)  | same    | relu |
-    | maxpool3   | -     | (1,2)  | (1,2)  | same    | -    |
+    | maxpool3   | -     | (2,1)  | (2,1)  | same    | -    |
     | batchnorm1 | -     | -      | -      | -       | -    |
     | conv5      | 512   | (3,3)  | (1,1)  | same    | relu |
     | batchnorm2 | -     | -      | -      | -       | -    |
     | conv6      | 512   | (3,3)  | (1,1)  | same    | relu |
-    | maxpool4   | -     | (1,2)  | (1,2)  | same    | -    |
+    | maxpool4   | -     | (2,1)  | (2,1)  | same    | -    |
     | conv7      | 512   | (3,3)  | (1,1)  | valid   | relu |
 
 
@@ -61,12 +61,12 @@ class ConvFeatureExtractor(Layer):
         self.maxpool2 = MaxPooling2D((2, 2), (2, 2), padding='same')
         self.conv3 = Conv2D(n_hidden*4, (3, 3), activation='relu', padding='same')
         self.conv4 = Conv2D(n_hidden*4, (3, 3), activation='relu', padding='same')
-        self.maxpool3 = MaxPooling2D((1, 2), (1, 2), padding='same')
+        self.maxpool3 = MaxPooling2D((2, 1), (2, 1), padding='same')
         self.batchnorm1 = BatchNormalization()
         self.conv5 = Conv2D(n_hidden*8, (3, 3), activation='relu', padding='same')
         self.batchnorm2 = BatchNormalization()
         self.conv6 = Conv2D(n_hidden*8, (3, 3), activation='relu', padding='same')
-        self.maxpool4 = MaxPooling2D((1, 2), (1, 2), padding='same')
+        self.maxpool4 = MaxPooling2D((2, 1), (2, 1), padding='same')
         self.conv7 = Conv2D(n_hidden*8, (2, 2), activation='relu', padding='valid')
 
     def call(self, inputs, **kwargs):
@@ -110,31 +110,31 @@ class ResidualConvFeatureExtractor(Layer):
         super().__init__(**kwargs)
         # for builing Layer and Weight
         self.conv1_1 = Conv2D(n_hidden, (3, 3), activation='relu', padding='same')
-        self.lnorm1_1 = LayerNormalization(axis=(2, 3)) # Normalizing height & Channel
+        self.lnorm1_1 = LayerNormalization(axis=(1, 3)) # Normalizing height & Channel
         self.conv1_2 = Conv2D(n_hidden, (3, 3), padding='same')
-        self.lnorm1_2 = LayerNormalization(axis=(2, 3)) # Normalizing height & Channel
+        self.lnorm1_2 = LayerNormalization(axis=(1, 3)) # Normalizing height & Channel
         self.maxpool1 = MaxPooling2D((2, 2), (2, 2), padding='same')
 
         self.conv2_skip = Conv2D(n_hidden*2, (1, 1), activation='relu', padding='same')
         self.conv2_1 = Conv2D(n_hidden*2, (3, 3), activation='relu', padding='same')
-        self.lnorm2_1 = LayerNormalization(axis=(2, 3)) # Normalizing height & Channel
+        self.lnorm2_1 = LayerNormalization(axis=(1, 3)) # Normalizing height & Channel
         self.conv2_2 = Conv2D(n_hidden*2, (3, 3), padding='same')
-        self.lnorm2_2 = LayerNormalization(axis=(2, 3)) # Normalizing height & Channel
+        self.lnorm2_2 = LayerNormalization(axis=(1, 3)) # Normalizing height & Channel
         self.maxpool2 = MaxPooling2D((2, 2), (2, 2), padding='same')
 
         self.conv3_skip = Conv2D(n_hidden * 4, (1, 1), activation='relu', padding='same')
         self.conv3_1 = Conv2D(n_hidden*4, (3, 3), activation='relu', padding='same')
-        self.lnorm3_1 = LayerNormalization(axis=(2, 3)) # Normalizing height & Channel
+        self.lnorm3_1 = LayerNormalization(axis=(1, 3)) # Normalizing height & Channel
         self.conv3_2 = Conv2D(n_hidden*4, (3, 3), padding='same')
-        self.lnorm3_2 = LayerNormalization(axis=(2, 3)) # Normalizing height & Channel
-        self.maxpool3 = MaxPooling2D((1, 2), (1, 2), padding='same')
+        self.lnorm3_2 = LayerNormalization(axis=(1, 3)) # Normalizing height & Channel
+        self.maxpool3 = MaxPooling2D((2, 1), (2, 1), padding='same')
 
         self.conv4_skip = Conv2D(n_hidden * 4, (1, 1), activation='relu', padding='same')
         self.conv4_1 = Conv2D(n_hidden*4, (3, 3), activation='relu', padding='same')
-        self.lnorm4_1 = LayerNormalization(axis=(2, 3)) # Normalizing height & Channel
+        self.lnorm4_1 = LayerNormalization(axis=(1, 3)) # Normalizing height & Channel
         self.conv4_2 = Conv2D(n_hidden*4, (3, 3), padding='same')
-        self.lnorm4_2 = LayerNormalization(axis=(2, 3)) # Normalizing height & Channel
-        self.maxpool4 = MaxPooling2D((1, 2), (1, 2), padding='same')
+        self.lnorm4_2 = LayerNormalization(axis=(1, 3)) # Normalizing height & Channel
+        self.maxpool4 = MaxPooling2D((2, 1), (2, 1), padding='same')
         self.built = True
 
     def call(self, inputs, **kwargs):
@@ -178,12 +178,12 @@ class ResidualConvFeatureExtractor(Layer):
 
 
 class Map2Sequence(Layer):
-    """
-    CRNN 중 CNN Layer의 출력값을 RNN Layer의 입력값으로 변환하는 Module Class
+    """ CNN Layer의 출력값을 RNN Layer의 입력값으로 변환하는 Module Class
+    Transpose & Reshape을 거쳐서 진행
 
     CNN output shape  ->  RNN Input Shape
 
-    (batch size, width, height, channels)
+    (batch size, height, width, channels)
     -> (batch size, width, height * channels)
 
     * Caution
@@ -199,11 +199,11 @@ class Map2Sequence(Layer):
         # Get the Dynamic Shape
         shape = tf.shape(inputs)
         batch_size = shape[0]
-        f_width = shape[1]
+        f_width = shape[2]
 
         # Get the Static Shape
-        _, _, f_height, f_num = inputs.shape.as_list()
-
+        _, f_height, _, f_num = inputs.shape.as_list()
+        inputs = K.permute_dimensions(inputs, (0, 2, 1, 3))
         return tf.reshape(inputs,
                           shape=[batch_size, f_width,
                                  f_height * f_num])
@@ -271,12 +271,26 @@ class CTCDecoder(Layer):
 
 
 class DotAttention(Layer):
-    def __init__(self, **kwargs):
+    """ General Dot-Product Attention Network (Luong, 2015)
+
+    * n_state :
+       if n_state is None, Dot-Product Attention(s_t * h_i)
+       if n_state is number, general Dot-Product Attention(s_t * W_a * h_i)
+
+    """
+    def __init__(self, n_state=None, **kwargs):
         super().__init__(**kwargs)
+        self.n_state = n_state
+        if isinstance(self.n_state, int):
+            self.dense1 = Dense(self.n_state)
 
     def call(self, inputs, **kwargs):
         states_encoder = inputs[0]
         states_decoder = inputs[1]
+
+        # (0) adjust the size of encoder state to the size of decoder state
+        if isinstance(self.n_state, int):
+            states_encoder = self.dense1(states_encoder)
 
         # (1) Calculate Score
         expanded_states_encoder = states_encoder[:, None, ...]
@@ -286,7 +300,6 @@ class DotAttention(Layer):
         score = K.sum(expanded_states_encoder * expanded_states_decoder,
                       axis=-1)
         # >>> (batch size, length of decoder input, length of encoder input)
-
         # (2) Normalize score
         attention = Softmax(axis=-1, name='attention')(score)
 
@@ -296,8 +309,16 @@ class DotAttention(Layer):
 
         return context, attention
 
+    def get_config(self):
+        config = {
+            "n_state": self.n_state
+        }
+        base_config = super().get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
 
 __all__ = ["ConvFeatureExtractor",
+           "ResidualConvFeatureExtractor",
            "Map2Sequence",
            "BLSTMEncoder",
            "CTCDecoder",
@@ -305,10 +326,11 @@ __all__ = ["ConvFeatureExtractor",
 
 get_custom_objects().update({
     "ConvFeatureExtractor" : ConvFeatureExtractor,
+    "ResidualConvFeatureExtractor": ResidualConvFeatureExtractor,
     "Map2Sequence" : Map2Sequence,
     "BLSTMEncoder" : BLSTMEncoder,
     "CTCDecoder" : CTCDecoder,
-    "DotAttention": DotAttention
+    "DotAttention": DotAttention,
 })
 
 
