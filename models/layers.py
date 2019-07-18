@@ -326,7 +326,7 @@ class JamoEmbedding(Layer):
 
     def __init__(self, n_embed=16, **kwargs):
         super().__init__(**kwargs)
-        self.n_embed = 16
+        self.n_embed = n_embed
         # input_dim : 자모자 갯수 + <EOS> Token
         self.초성_layer = Embedding(input_dim=len(초성) + 1,
                                    output_dim=n_embed)
@@ -427,7 +427,10 @@ __all__ = ["ConvFeatureExtractor",
            "Map2Sequence",
            "BLSTMEncoder",
            "CTCDecoder",
-           "DotAttention"]
+           "DotAttention",
+           "JamoCompose",
+           "JamoEmbedding",
+           "JamoClassifier"]
 
 get_custom_objects().update({
     "ConvFeatureExtractor" : ConvFeatureExtractor,
@@ -436,6 +439,9 @@ get_custom_objects().update({
     "BLSTMEncoder" : BLSTMEncoder,
     "CTCDecoder" : CTCDecoder,
     "DotAttention": DotAttention,
+    "JamoCompose": JamoCompose,
+    "JamoEmbedding": JamoEmbedding,
+    "JamoClassifier": JamoClassifier
 })
 
 
