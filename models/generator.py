@@ -1,5 +1,4 @@
 from tensorflow.python.keras.utils import Sequence
-from .jamo import 초성, 중성, 종성
 import numpy as np
 import pandas as pd
 

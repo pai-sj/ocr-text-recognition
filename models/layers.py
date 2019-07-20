@@ -11,7 +11,7 @@ from tensorflow.python.keras.layers import Embedding
 from tensorflow.python.keras.layers import Concatenate
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import get_custom_objects
-from .generator import 초성, 중성, 종성
+from .jamo import 초성, 중성, 종성
 import tensorflow as tf
 
 """
@@ -285,7 +285,8 @@ class DotAttention(Layer):
         super().__init__(**kwargs)
         self.n_state = n_state
         if isinstance(self.n_state, int):
-            self.dense1 = Dense(self.n_state)
+            self.key_dense = Dense(self.n_state)
+            self.val_dense = Dense(self.n_state)
 
     def call(self, inputs, **kwargs):
         states_encoder = inputs[0]
@@ -293,10 +294,15 @@ class DotAttention(Layer):
 
         # (0) adjust the size of encoder state to the size of decoder state
         if isinstance(self.n_state, int):
-            states_encoder = self.dense1(states_encoder)
+            # Key Vector와 Value Vector을 다르게 둚
+            key_vector = self.key_dense(states_encoder)
+            val_vector = self.val_dense(states_encoder)
+        else:
+            key_vector = states_encoder
+            val_vector = states_encoder
 
         # (1) Calculate Score
-        expanded_states_encoder = states_encoder[:, None, ...]
+        expanded_states_encoder = key_vector[:, None, ...]
         # >>> (batch size, 1, length of encoder sequence, num hidden)
         expanded_states_decoder = states_decoder[..., None, :]
         # >>> (batch size, length of decoder sequence, 1, num hidden)
@@ -307,9 +313,9 @@ class DotAttention(Layer):
         attention = Softmax(axis=-1, name='attention')(score)
 
         # (3) Calculate Context Vector
-        context = K.sum(expanded_states_encoder * attention[..., None], axis=2)
+        expanded_val_vector = val_vector[:, None, ...]
+        context = K.sum(expanded_val_vector * attention[..., None], axis=2)
         # >>> (batch size, length of decoder input, num hidden)
-
         return context, attention
 
     def get_config(self):

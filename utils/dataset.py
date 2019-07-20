@@ -126,7 +126,7 @@ class OCRDataset:
     """
     generate OCR dataset for Text Recognition
 
-    텍스트 Recognition에 필요한 단어집합을 만ㄷ르어주는 것
+    텍스트 Recognition에 필요한 단어집합을 만들어주는 것
 
     :param words : OCR 단어로 생성할 단어 집합들
     :param bg_noise : 가우시안 노이즈의 강도 (0.0~0.5)
