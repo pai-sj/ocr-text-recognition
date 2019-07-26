@@ -199,11 +199,9 @@ class OCRDataset:
         np.random.shuffle(self.words)
 
 
-def paint_text(text, max_word=None, font_size=28, color_noise=(0.,0.6), random_shift=True):
+def paint_text(text, max_word=None, font_size=28, color_noise=(0.,0.6), random_shift=True, font_list=FONT_LIST):
     '''
     Text가 그려진 이미지를 만드는 함수
-
-    max
     '''
     if max_word is None:
         # None이면, text의 word 갯수에 맞춰서 생성
@@ -218,10 +216,10 @@ def paint_text(text, max_word=None, font_size=28, color_noise=(0.,0.6), random_s
 
         # Font Style : Random Pick
         context.select_font_face(
-            np.random.choice(FONT_LIST),
-            cairo.FONT_SLANT_NORMAL,
-            np.random.choice([cairo.FONT_WEIGHT_BOLD,
-                              cairo.FONT_WEIGHT_NORMAL]))
+                np.random.choice(font_list),
+                cairo.FONT_SLANT_NORMAL,
+                np.random.choice([cairo.FONT_WEIGHT_BOLD,
+                                  cairo.FONT_WEIGHT_NORMAL]))
 
         context.set_font_size(font_size)
         box = context.text_extents(text)

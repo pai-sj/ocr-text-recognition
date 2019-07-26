@@ -20,6 +20,14 @@ pip install -r requirements.txt
 pip install tensorflow==1.14 # or tensorflow-gpu
 ````
 
+### 3. 한글 폰트 설치
+
+나눔 폰트가 설치되어 있어야 합니다. 나눔 폰트를 이용해 한글 데이터셋을 만듭니다.
+````bash
+sudo apt-get update -qq
+sudo apt-get install fonts-nanum* -qq
+````
+
 ## 3. Usage
 
 ### 1. 디렉토리 구조
