@@ -135,7 +135,8 @@ class OCRDataset:
                  color_noise=(0.0, 0.6),
                  normalize=False,
                  random_shift=True,
-                 gray_scale=True):
+                 gray_scale=True,
+                 font_list=FONT_LIST):
         self.words = np.array(words)
         self.max_word = max([len(word) for word in self.words])
         self.font_size = font_size
@@ -145,11 +146,13 @@ class OCRDataset:
         self.normalize = normalize
         self.random_shift = random_shift
         self.color_noise = color_noise
+        self.font_list = font_list
         self.paint_text = lambda word: paint_text(word,
                                                   self.max_word,
                                                   self.font_size,
                                                   self.color_noise,
-                                                  self.random_shift)
+                                                  self.random_shift,
+                                                  self.font_list)
 
     def __len__(self):
         # 전체 데이터 셋
