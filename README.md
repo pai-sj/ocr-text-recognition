@@ -1,27 +1,36 @@
-CRNN, An End-to-End Trainable Neural Network for Image-based Sequence Recognition and Its Application to Scene Text Recognition
+Text Recognition Model (CRNN + Seq2Seq + Attention + Jamo Embedding)
 ---
 
-### 1. Objective
+## 1. Objective
 
-> 텐서플로우로 구현한 [CRNN](https://arxiv.org/abs/1507.05717) 모델입니다. 이 모델은 Text Recognition을 위해 만들어진 모델입니다. 
+> 텐서플로우로 구현한  
 
-### 2. TODO-List
+## 2. installation
 
-* [x] CRNN 골격 네트워크 구현 (CNN - RNN - transcription) 
+### 1. 가상환경 설치
+```bash
+virtualenv venv
+source venv/bin/activate 
+``` 
+### 2. 필수 라이브러리 설치
 
-* [x] Loss Function 구현
+GPU 환경 혹은 CPU 환경에 따라 텐서플로우를 설치해 주세요.
+````bash
+pip install -r requirements.txt
+pip install tensorflow==1.14 # or tensorflow-gpu
+````
 
-* [x] Data Generator 구현
+## 3. Usage
 
-* [x] MNIST 모델로 학습
-
-* [ ] Text Recognition 데이터셋으로 학습
-
-* [ ] Decode Layer 수정
-
-### 3. 설명
+### 1. 디렉토리 구조
 
 현재 어떤 식으로 구현되어 있는 지는 `scripts/` 아래의 폴더를 참고하시면 됩니다. <br>
-그리고 모델의 구성에 관련된 모든 코드는 `models/crnn.py`에 정리하였습니다. <br>
-데이터셋은 aws S3에 저장되어 있습니다. 자동으로 다운받을 수 있도록 구현되어 있습니다.    
-
+````markdown
+models/
+   |- generator.py : Keras의 `Data Generator` 클래스가 구현된 스크립트 
+   |- jamo.py : 한글 자모자를 다루는 메소드들이 구현된 스크립트
+   |- layers.py : Text Recognition Model에 관련된 custom Layer들이 구현된 스크립트
+   |- losses.py : Text Recognition Model에 관련된 Custom Losses들이 구현된 스크립트 
+   |- optimizer.py : Custom Optimizer, ADAM이 구현된 스크립트
+   |- utils.py : 기타 시각화 혹은 generator에 이용되는 스크립트
+````
