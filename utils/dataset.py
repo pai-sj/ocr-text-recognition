@@ -4,6 +4,7 @@ import os
 import cairocffi as cairo
 from imgaug import augmenters as iaa
 import matplotlib.font_manager as fm
+import wget
 """
 # All about MNIST Style DataSet
 
@@ -15,12 +16,8 @@ import matplotlib.font_manager as fm
     - handwritten : handwritten a ~ z Alphabet dataset
 
 """
-dirnames = []
-for dirname in os.getcwd().split('/'):
-    dirnames.append(dirname)
-    if dirname == 'CRNN-text-recognition':
-        break
-DATASET_DIR = "/".join(dirnames + ['datasets'])
+ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
+DATASET_DIR = os.path.join(ROOT_DIR,"datasets/")
 DOWNLOAD_URL_FORMAT = "https://s3.ap-northeast-2.amazonaws.com/pai-datasets/all-about-mnist/{}/{}.csv"
 
 FONT_LIST = [f.name for f in fm.fontManager.ttflist]
@@ -452,7 +449,6 @@ def load_dataset(dataset, data_type):
 # Download korean word file path
 KOR_WORD_FILE_PATH = os.path.join(DATASET_DIR,"wordslist.txt")
 if not os.path.exists(KOR_WORD_FILE_PATH):
-    import wget
     wget.download('https://github.com/acidsound/korean_wordlist/raw/master/wordslist.txt',
                   out=KOR_WORD_FILE_PATH)
 
