@@ -1,6 +1,7 @@
 from tensorflow.python.keras.utils import Sequence
 import numpy as np
 import pandas as pd
+from utils.dataset import OCRDataset
 
 
 class OCRGenerator(Sequence):
@@ -141,8 +142,7 @@ class JAMOSeq2SeqGenerator(Sequence):
     "초성 중성 종성 각각 나누어서 Return"
 
     def __init__(self, dataset, batch_size=32,
-                 blank_value=-1, shuffle=True,
-                 return_initial_state=True, state_size=512):
+                 blank_value=-1, shuffle=True):
         """
         Initialization
 
@@ -151,15 +151,13 @@ class JAMOSeq2SeqGenerator(Sequence):
         :param batch_size : the number of batch
         :param blank_value : the value of `blank` label
         :param shuffle : whether shuffle dataset or not
-        :param return_initial_state : Whether return Initial state(Zero state) or not
-        :param state_size : if return_initial_state is True, the size of initial state
         """
+        if isinstance(dataset, dict):
+            dataset = OCRDataset(**dataset)
         self.dataset = dataset
         self.batch_size = batch_size
         self.blank_value = blank_value
         self.shuffle = shuffle
-        self.return_initial_state = return_initial_state
-        self.state_size = state_size
         self.on_epoch_end()
 
     def __len__(self):
@@ -178,20 +176,13 @@ class JAMOSeq2SeqGenerator(Sequence):
             unicode_arr[idx, len(text)] = ord('\n')
         decode_inputs = np.roll(unicode_arr, 1, axis=1)
         decode_inputs[:, 0] = ord('\n')
+        decode_inputs = decode_inputs.astype(np.int32)
 
         X = {
             "images": images,
-            "decoder_inputs": decode_inputs,
+            "output_sequences": unicode_arr
         }
-        # return initial state
-        if self.return_initial_state:
-            batch_size = images.shape[0]
-            X['decoder_state'] = np.zeros([batch_size, self.state_size])
-
-        Y = {
-            "output_seqs": unicode_arr,
-        }
-        return X, Y
+        return (X, )
 
     def on_epoch_end(self):
         "Updates indexes after each epoch"
@@ -291,7 +282,7 @@ class Seq2SeqGenerator(Sequence):
             X['decoder_state'] = np.zeros([batch_size, self.state_size])
 
         Y = {
-            "output_seqs" : batch_labels
+            "output_seqs": batch_labels
         }
 
         return X, Y

@@ -1,10 +1,15 @@
+"""
+Copyright 2019, SangJae Kang, All rights reserved.
+Mail : rocketgrowthsj@gmail.com
+"""
 import numpy as np
 import pandas as pd
 import os
+import requests
+from tqdm import tqdm
 import cairocffi as cairo
 from imgaug import augmenters as iaa
 import matplotlib.font_manager as fm
-import wget
 """
 # All about MNIST Style DataSet
 
@@ -153,6 +158,19 @@ class OCRDataset:
                                                   self.color_noise,
                                                   self.random_shift,
                                                   self.font_list)
+        if isinstance(words,np.ndarray):
+            words = words.tolist()
+        self.config = {
+            "words": words,
+            "font_size": font_size,
+            "bg_noise": bg_noise,
+            "affine_noise": affine_noise,
+            "color_noise": color_noise,
+            "normalize": normalize,
+            "random_shift": random_shift,
+            "gray_scale": gray_scale,
+            "font_list": font_list
+        }
 
     def __len__(self):
         # 전체 데이터 셋
@@ -450,9 +468,12 @@ def load_dataset(dataset, data_type):
 # Download korean word file path
 KOR_WORD_FILE_PATH = os.path.join(DATASET_DIR,"wordslist.txt")
 if not os.path.exists(KOR_WORD_FILE_PATH):
-    wget.download('https://github.com/acidsound/korean_wordlist/raw/master/wordslist.txt',
-                  out=KOR_WORD_FILE_PATH)
-
+    response = requests.get('https://github.com/acidsound/korean_wordlist/raw/master/wordslist.txt',
+                            stream=True)
+    with open(KOR_WORD_FILE_PATH, 'wb') as f:
+        for chunk in tqdm(response.iter_content(chunk_size=1024)):
+            if chunk:
+                f.write(chunk)
 
 if __name__ == '__main__':
     pass
