@@ -1,3 +1,4 @@
+from tensorflow.python.keras.engine.base_layer import AddMetric, AddLoss
 from tensorflow.python.keras.utils import get_custom_objects
 from models.layers import *
 from models.optimizer import *
@@ -8,7 +9,7 @@ get_custom_objects().update({
     "ConvFeatureExtractor" : ConvFeatureExtractor,
     "ResidualConvFeatureExtractor": ResidualConvFeatureExtractor,
     "Map2Sequence" : Map2Sequence,
-    "BLSTMEncoder" : BLSTMEncoder,
+    "BGRUEncoder" : BGRUEncoder,
     "CTCDecoder" : CTCDecoder,
     "DotAttention": DotAttention,
     "JamoCompose": JamoCompose,
@@ -25,5 +26,9 @@ get_custom_objects().update({'AdamW': AdamW,
 # Custom Loss 구성하기
 get_custom_objects().update({
     'ctc_loss': ctc_loss,
-    'jamo_categorical_crossentropy': jamo_categorical_crossentropy,
     "JamoCategoricalCrossEntropy": JamoCategoricalCrossEntropy})
+
+# BUGS!!!> Keras 기본 인자인데, 세팅이 안되어 있어서, save Model & Load Model에서
+# 따로 지정해주어야 함
+get_custom_objects().update({'AddMetric': AddMetric,
+                             'AddLoss': AddLoss})

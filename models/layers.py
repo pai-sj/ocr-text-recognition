@@ -4,7 +4,7 @@ Mail : rocketgrowthsj@gmail.com
 """
 from tensorflow.python.keras.layers import Conv2D, Layer
 from tensorflow.python.keras.layers import MaxPooling2D, BatchNormalization
-from tensorflow.python.keras.layers import Bidirectional, LSTM
+from tensorflow.python.keras.layers import Bidirectional, GRU
 from tensorflow.python.keras.layers import Softmax, Dense
 from tensorflow.python.keras.layers import Embedding
 from tensorflow.python.keras.layers import Concatenate
@@ -209,7 +209,7 @@ class Map2Sequence(Layer):
                                  f_height * f_num])
 
 
-class BLSTMEncoder(Layer):
+class BGRUEncoder(Layer):
     """
     CRNN 중 Recurrent Layers에 해당하는 Module Class
     Convolution Layer의 Image Feature Sequence를 Encoding하여,
@@ -217,20 +217,20 @@ class BLSTMEncoder(Layer):
 
     | Layer Name | #Hidden Units |
     | ----       | ------ |
-    | Bi-LSTM1   | 256    |
-    | Bi-LSTM2   | 256    |
+    | Bi-GRU1   | 256    |
+    | Bi-GRU2   | 256    |
 
     """
     def __init__(self, n_units=256, **kwargs):
         self.n_units = n_units
         super().__init__(**kwargs)
-        self.lstm1 = Bidirectional(LSTM(n_units, return_sequences=True))
-        self.lstm2 = Bidirectional(LSTM(n_units, return_sequences=True))
+        self.gru1 = Bidirectional(GRU(n_units, return_sequences=True))
+        self.gru2 = Bidirectional(GRU(n_units, return_sequences=True, return_state=True))
 
     def call(self, inputs, **kwargs):
-        x = self.lstm1(inputs)
-        x = self.lstm2(x)
-        return x
+        x = self.gru1(inputs)
+        state_outputs, forward_s, backward_s = self.gru2(x)
+        return state_outputs, forward_s, backward_s
 
     def get_config(self):
         config = {
@@ -445,7 +445,7 @@ class TeacherForcing(Layer):
 __all__ = ["ConvFeatureExtractor",
            "ResidualConvFeatureExtractor",
            "Map2Sequence",
-           "BLSTMEncoder",
+           "BGRUEncoder",
            "CTCDecoder",
            "DotAttention",
            "JamoDeCompose",

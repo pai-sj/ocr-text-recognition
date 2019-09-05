@@ -62,35 +62,6 @@ def masking_sparse_categorical_crossentropy(mask_value):
     return loss
 
 
-def jamo_categorical_crossentropy(y_true, y_pred):
-    y_true = K.cast(y_true, tf.int32)
-    eos_mask = tf.not_equal(y_true, ord('\n'))
-    blank_mask = tf.not_equal(y_true, -1)
-
-    y_true_초성 = ((y_true - 44032) // 28) // 21
-    y_true_초성 = tf.where(eos_mask, y_true_초성, tf.ones_like(y_true_초성)*len(초성))
-    y_true_초성 = tf.where(blank_mask, y_true_초성, tf.zeros_like(y_true_초성))
-
-    y_true_중성 = ((y_true - 44032) // 28) % 21
-    y_true_중성 = tf.where(eos_mask, y_true_중성, tf.ones_like(y_true_중성)*len(중성))
-    y_true_중성 = tf.where(blank_mask, y_true_중성, tf.zeros_like(y_true_중성))
-
-    y_true_종성 = (y_true - 44032) % 28
-    y_true_종성 = tf.where(eos_mask, y_true_종성, tf.ones_like(y_true_종성)*len(종성))
-    y_true_종성 = tf.where(blank_mask, y_true_종성, tf.zeros_like(y_true_종성))
-
-    y_pred_초성,  y_pred_중성, y_pred_종성 = tf.split(y_pred,
-                                                [len(초성) + 1, len(중성) + 1, len(종성) + 1],
-                                                axis=-1)
-
-    mask = tf.cast(blank_mask, dtype=K.floatx())
-    loss_초성 = K.sparse_categorical_crossentropy(y_true_초성, y_pred_초성) * mask
-    loss_중성 = K.sparse_categorical_crossentropy(y_true_중성, y_pred_중성) * mask
-    loss_종성 = K.sparse_categorical_crossentropy(y_true_종성, y_pred_종성) * mask
-
-    return  K.sum(loss_초성 + loss_중성 + loss_종성) / K.sum(mask)
-
-
 class JamoCategoricalCrossEntropy(Layer):
     def __init__(self, blank_value, **kwargs):
         self.blank_value = blank_value
@@ -117,9 +88,15 @@ class JamoCategoricalCrossEntropy(Layer):
         loss_jamo = K.sum(loss_초성+loss_중성+loss_종성, axis=1)
         return loss_jamo / mask
 
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "blank_value": self.blank_value,
+        })
+        return config
+
 
 __all__ = [
     "ctc_loss",
-    "jamo_categorical_crossentropy",
     "JamoCategoricalCrossEntropy"
 ]
