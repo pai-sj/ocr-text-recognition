@@ -4,13 +4,12 @@ Mail : rocketgrowthsj@gmail.com
 """
 from tensorflow.python.keras.layers import Conv2D, Layer
 from tensorflow.python.keras.layers import MaxPooling2D, BatchNormalization
-from tensorflow.python.keras.layers import LayerNormalization
 from tensorflow.python.keras.layers import Bidirectional, LSTM
 from tensorflow.python.keras.layers import Softmax, Dense
 from tensorflow.python.keras.layers import Embedding
 from tensorflow.python.keras.layers import Concatenate
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.utils import get_custom_objects
+from models.normalization import GroupNormalization
 from .jamo import 초성, 중성, 종성
 import tensorflow as tf
 
@@ -101,9 +100,7 @@ class ResidualConvFeatureExtractor(Layer):
     [ conv2d - layer norm - conv2d - layer norm - maxpool ] * 3
 
     특징
-     1. Batch Normalization 대신 Layer Normalization을 이용(높이와 채널 축으로만 진행)
-        RNN 모델에서는 주로 BN 보다는 LN을 쓴다고 함.
-        Layer Normalization은 Hidden unit들에 대해서 Mean과 Variance를 구함
+     1. Batch Normalization 대신 Group Normalization을 이용
      2. KAKAO와 달리 Block 수를 4개로 진행 (보다 넓은 범위를 탐색하기 위함)
      3. Residual Block을 두어서 보다 빠르게 학습가능하도록 설정
 
@@ -113,61 +110,61 @@ class ResidualConvFeatureExtractor(Layer):
         super().__init__(**kwargs)
         # for builing Layer and Weight
         self.conv1_1 = Conv2D(n_hidden, (3, 3), activation='relu', padding='same')
-        self.lnorm1_1 = LayerNormalization(axis=(1, 3)) # Normalizing height & Channel
+        self.norm1_1 = GroupNormalization(groups=n_hidden//4)
         self.conv1_2 = Conv2D(n_hidden, (3, 3), padding='same')
-        self.lnorm1_2 = LayerNormalization(axis=(1, 3)) # Normalizing height & Channel
+        self.norm1_2 = GroupNormalization(groups=n_hidden//4)
         self.maxpool1 = MaxPooling2D((2, 2), (2, 2), padding='same')
 
         self.conv2_skip = Conv2D(n_hidden*2, (1, 1), activation='relu', padding='same')
         self.conv2_1 = Conv2D(n_hidden*2, (3, 3), activation='relu', padding='same')
-        self.lnorm2_1 = LayerNormalization(axis=(1, 3)) # Normalizing height & Channel
+        self.norm2_1 = GroupNormalization(groups=n_hidden//4)
         self.conv2_2 = Conv2D(n_hidden*2, (3, 3), padding='same')
-        self.lnorm2_2 = LayerNormalization(axis=(1, 3)) # Normalizing height & Channel
+        self.norm2_2 = GroupNormalization(groups=n_hidden//4)
         self.maxpool2 = MaxPooling2D((2, 2), (2, 2), padding='same')
 
         self.conv3_skip = Conv2D(n_hidden * 4, (1, 1), activation='relu', padding='same')
         self.conv3_1 = Conv2D(n_hidden*4, (3, 3), activation='relu', padding='same')
-        self.lnorm3_1 = LayerNormalization(axis=(1, 3)) # Normalizing height & Channel
+        self.norm3_1 = GroupNormalization(groups=n_hidden//4)
         self.conv3_2 = Conv2D(n_hidden*4, (3, 3), padding='same')
-        self.lnorm3_2 = LayerNormalization(axis=(1, 3)) # Normalizing height & Channel
+        self.norm3_2 = GroupNormalization(groups=n_hidden//4)
         self.maxpool3 = MaxPooling2D((2, 1), (2, 1), padding='same')
 
         self.conv4_skip = Conv2D(n_hidden * 4, (1, 1), activation='relu', padding='same')
         self.conv4_1 = Conv2D(n_hidden*4, (3, 3), activation='relu', padding='same')
-        self.lnorm4_1 = LayerNormalization(axis=(1, 3)) # Normalizing height & Channel
+        self.norm4_1 = GroupNormalization(groups=n_hidden//4)
         self.conv4_2 = Conv2D(n_hidden*4, (3, 3), padding='same')
-        self.lnorm4_2 = LayerNormalization(axis=(1, 3)) # Normalizing height & Channel
+        self.norm4_2 = GroupNormalization(groups=n_hidden//4)
         self.maxpool4 = MaxPooling2D((2, 1), (2, 1), padding='same')
         self.built = True
 
     def call(self, inputs, **kwargs):
         x = self.conv1_1(inputs)
-        x = self.lnorm1_1(x)
+        x = self.norm1_1(x)
         x = self.conv1_2(x)
-        x = self.lnorm1_2(x)
+        x = self.norm1_2(x)
         x = self.maxpool1(x)
 
         skip = self.conv2_skip(x)
         x = self.conv2_1(x)
-        x = self.lnorm2_1(x)
+        x = self.norm2_1(x)
         x = self.conv2_2(x)
-        x = self.lnorm2_2(x)
+        x = self.norm2_2(x)
         x = K.relu(skip + x)
         x = self.maxpool2(x)
 
         skip = self.conv3_skip(x)
         x = self.conv3_1(x)
-        x = self.lnorm3_1(x)
+        x = self.norm3_1(x)
         x = self.conv3_2(x)
-        x = self.lnorm3_2(x)
+        x = self.norm3_2(x)
         x = K.relu(skip + x)
         x = self.maxpool3(x)
 
         skip = self.conv4_skip(x)
         x = self.conv4_1(x)
-        x = self.lnorm4_1(x)
+        x = self.norm4_1(x)
         x = self.conv4_2(x)
-        x = self.lnorm4_2(x)
+        x = self.norm4_2(x)
         x = K.relu(skip + x)
         x = self.maxpool4(x)
         return x
@@ -344,17 +341,7 @@ class JamoEmbedding(Layer):
     def call(self, inputs, **kwargs):
         # (1) decompose : 자모자로 분리하기
         inputs = tf.cast(inputs, dtype=tf.int32)
-        # # <EOS> Token & <BLANK> Token mask
-        mask = (tf.not_equal(inputs, ord('\n')) & tf.not_equal(inputs, -1))
-
-        초성_arr = ((inputs - 44032) // 28) // 21
-        초성_arr = tf.where(mask, 초성_arr, tf.ones_like(초성_arr)*len(초성))
-
-        중성_arr = ((inputs - 44032) // 28) % 21
-        중성_arr = tf.where(mask, 중성_arr, tf.ones_like(중성_arr)*len(중성))
-
-        종성_arr = (inputs - 44032) % 28
-        종성_arr = tf.where(mask, 종성_arr, tf.ones_like(종성_arr)*len(종성))
+        초성_arr, 중성_arr, 종성_arr = JamoDeCompose()(inputs)
 
         # (2) embed : Embedding Layer 통과하기
         초성_embed = self.초성_layer(초성_arr)
@@ -391,8 +378,28 @@ class JamoCompose(Layer):
                     tf.less(중성_arr, len(중성)) |
                     tf.less(종성_arr, len(종성)))
         unicode_arr = tf.cast((초성_arr * 21 + 중성_arr) * 28 + 종성_arr + 44032,dtype=tf.int32)
-        unicode_arr = tf.where(eos_mask,unicode_arr,tf.ones_like(unicode_arr)*ord('\n'))
+        unicode_arr = tf.where(eos_mask,
+                               unicode_arr,
+                               tf.ones_like(unicode_arr)*ord('\n'))
         return unicode_arr
+
+
+class JamoDeCompose(Layer):
+    """ 자모자 Unicode를 Decompose하여 초성/중성/종성별로 나누어주는 함수 Module Layer
+    """
+    def call(self, inputs, **kwargs):
+        # # <EOS> Token & <BLANK> Token mask
+        mask = (tf.not_equal(inputs, ord('\n')) & tf.not_equal(inputs, -1))
+
+        초성_arr = ((inputs - 44032) // 28) // 21
+        초성_arr = tf.where(mask, 초성_arr, tf.ones_like(초성_arr)*len(초성))
+
+        중성_arr = ((inputs - 44032) // 28) % 21
+        중성_arr = tf.where(mask, 중성_arr, tf.ones_like(중성_arr)*len(중성))
+
+        종성_arr = (inputs - 44032) % 28
+        종성_arr = tf.where(mask, 종성_arr, tf.ones_like(종성_arr)*len(종성))
+        return 초성_arr, 중성_arr, 종성_arr
 
 
 class JamoClassifier(Layer):
@@ -428,26 +435,21 @@ class JamoClassifier(Layer):
         return dict(list(base_config.items()) + list(config.items()))
 
 
+class TeacherForcing(Layer):
+    def call(self, inputs, **kwargs):
+        inputs = tf.roll(inputs, shift=1, axis=1)
+        eos = tf.ones_like(inputs[:, :1]) * ord('\n')
+        return tf.concat([eos, inputs[:, 1:]], axis=1)
+
+
 __all__ = ["ConvFeatureExtractor",
            "ResidualConvFeatureExtractor",
            "Map2Sequence",
            "BLSTMEncoder",
            "CTCDecoder",
            "DotAttention",
+           "JamoDeCompose",
            "JamoCompose",
            "JamoEmbedding",
-           "JamoClassifier"]
-
-get_custom_objects().update({
-    "ConvFeatureExtractor" : ConvFeatureExtractor,
-    "ResidualConvFeatureExtractor": ResidualConvFeatureExtractor,
-    "Map2Sequence" : Map2Sequence,
-    "BLSTMEncoder" : BLSTMEncoder,
-    "CTCDecoder" : CTCDecoder,
-    "DotAttention": DotAttention,
-    "JamoCompose": JamoCompose,
-    "JamoEmbedding": JamoEmbedding,
-    "JamoClassifier": JamoClassifier
-})
-
-
+           "JamoClassifier",
+           "TeacherForcing"]
